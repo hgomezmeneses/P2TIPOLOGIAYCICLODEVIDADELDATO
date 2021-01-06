@@ -1,0 +1,245 @@
+---
+title: 'Práctica 2: Limpieza y validación de los datos '
+author: "Hèctor Gómez Meneses"
+date: "null"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(nortest)
+library(dplyr)
+```
+
+**Índice**
+
+1. [Descripción del dataset.](#id1)
+2. [Integración y selección de los datos de interés a analizar](#id2)
+3. [Limpieza de los datos](#id3)
+
+    3.1. [¿Los datos contienen ceros o elementos vacíos? ¿Cómo gestionarías cada uno de estos casos?](#id4)
+
+    3.2. [Identificación y tratamiento de valores extremos](#id5)
+
+4. [Análisis de los datos](#id6)
+    
+    4.1 [Selección de los grupos de datos que se quieren analizar/comparar](#id7)
+    
+    4.2 [Comprobación de la normalidad y homogeneidad de la varianza](#id8)
+    
+    4.3 [Aplicación de pruebas estadísticas para comparar los grupos de datos.Pruebas de contraste de hipótesis,correlaciones, regresiones, etc. Aplicar al menos tres métodos de análisis diferentes](#id9)
+    
+5. [Representación de los resultados a partir de tablas y gráficas](#id10)
+6. [Resolución del problema. A partir de los resultados obtenidos, ¿cuáles son las conclusiones? ¿Los resultados permiten responder al problema?](#id11)
+
+**1. Descripción del dataset.<a name="id1"></a>**
+
+En esta práctica contamos con un dataset con diferentes variables referentes a vinos tintos, una de las cuales es la calidad . A partir de este conjunto de datos se propone determinar qué variables influyen más sobre la evaluación de estos vinos y se crearán modelos de regresión que permitiran predecir la calidad del vino en función de ciertos atributos.
+
+Las diferentes variables de nuestro dataset son:
+ 
+
+**fixed acidity:** variable numérica contínua con la acidez fija del vino.
+
+**volatile acidity:** variable numérica contínua con la acidez volátil del vino.
+
+**citric acid:** variable numérica contínua con el ácido cítrico del vino.
+
+**residual sugar:** variable numérica contínua con el azúcar residual del vino.
+
+**chlorides:** variable numérica contínua con los cloruros del vino.
+
+**free sulfur dioxide:** variable numérica contínua con el dioxido de azufre libre del vino.
+
+**total sulfur dioxide:**	 variable numérica contínua con el total de dioxido de azufre del vino.
+
+**density:** variable numérica contínua con la densidad del vino.
+
+**pH:** variable numérica contínua con el pH del vino.
+
+**sulphates:** variable numérica contínua con los sulfatos del vino.
+
+**alcohol:** variable numérica contínua con el alcohol del vino.
+
+**quality:** variable numérica contínua con la evaluación del vino, variable objetivo.
+
+**2. Integración y selección de los datos de interés a analizar<a name="id2"></a>**
+
+Leemos los datos y mostramos un resumen del dataset que tenemos:
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+wine <- read.csv('winequality-red.csv',sep=';')
+summary(wine)
+```
+
+**3. Limpieza de los datos<a name="id3"></a>**
+
+**3.1¿Los datos contienen ceros o elementos vacíos?<a name="id4"></a>**
+    
+A continuación comprobamos los valores que contengan ceros y los valores nulos
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+colSums(wine==0.00)
+colSums(is.na(wine))
+```
+Comprobamos que no tenemos valores nulos y que los valores que contienen ceros pertenecen al acido citrico, y son valores que no son erróneos por ser 0, puede ser 0 el valor del ácido cítrico del vino, por lo que los dejaremos como estan.
+
+**3.2 Identificación y tratamiento de valores extremos<a name="id5"></a>**
+
+Vamos ahora con los valores extremos, para ello mostramos el boxplot de cada variable
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+i=0
+par(mfrow=c(1,3))
+for(x in colnames(wine)) { 
+  if(i==3){
+    par(mfrow=c(1,3))
+    i=0}
+ boxplot(wine[x], xlab = x)
+ i=i+1
+}
+```
+
+Observamos que, aun que tenemos valores extremos, en la mayoría de las variables, todos entran en un límite razonable de valores que podrían considerarse correctos. El único caso es en la variable total.sulfur.dioxide, donde tenemos valores cercanos a 300, y únicamete tenemos dos, el siguiente más cercano apenas supera los 150, es por eso que prescindiremos de estos dos valores, para ellos filtramos los valores mayores a 200 en esta variable y exportaremos los datos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+wine <- wine[wine$total.sulfur.dioxide < 200, ]
+write.csv(wine, "Wine_clean.csv")
+```
+
+**4. Análisis de los datos<a name="id6"></a>**
+
+**4.1 Selección de los grupos de datos que se quieren analizar/comparar<a name="id7"></a>**
+
+En este caso, la única separación que me parece interesante hacer es entre los vinos con una puntuación mayor o igual que 5 y los vinos con una puntuación menor que 5, de forma que podamos ver las características de los vinos por separado.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+wine$quality_factor <- wine$quality
+wine <- wine %>% mutate(quality_factor = ifelse(quality_factor < 5,'Bad','Good'))
+```
+
+**4.2 Comprobación de la normalidad y homogeneidad de la varianza<a name="id8"></a>**
+
+Vamos primero a comprobar que nuestras variables sigan una distribución normal, para ello utilizamos el test AndersonDarling.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+normal <- c()
+not_normal <- c()
+for(x in colnames(wine[,1:12])) {
+  test <- ad.test(wine[[x]])
+  if(test$p.value>0.05){
+    normal<-append(normal,x)
+  }
+  else{
+    not_normal<-append(not_normal,x)
+  }
+}
+print(normal)
+print(not_normal)
+```
+Vemos que  ninguna de nuestras variables sigue una distribución normal, vamos ahora a comprobar la homogeneidad de la varianza, para ello utilizamos el test Fligner-Killeen ya que no disponemos de datos que sigan una distribución normal. Evaluaremos los grupos formados por los que tienen una nota superior al 5 y los que la tienen inferior.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fligner.test(wine$alcohol~wine$quality_factor)
+```
+Obtenemos un valor mayor que 0.05 de p.value por lo que podemos aceptar la hipótesis de que ambas varianzas son homogéneas.
+
+**4.3 Aplicación de pruebas estadísticas para comparar los grupos de datos.Pruebas de contraste de hipótesis,correlaciones, regresiones, etc. Aplicar al menos tres métodos de análisis diferentes<a name="id9"></a>**
+
+El primer método utilizaremos será la matriz de correlaciones, lo que haremos será ver que variables tienen una realación más fuerte con la variable a predecir, la más importante, la calidad del vino.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+wine_cor <- cor(wine[,1:12])
+library(corrplot)
+corrplot(wine_cor, method = "number")
+```
+
+Vemos que las variables que más correlación tienen más correlación son:
+
+  - Alcohol
+
+  - Sulphates
+
+  - Density
+
+  - Total.sulfur.dioxide
+
+  - Citric.acid
+
+  - Volatile.acidity
+
+
+El segundo método de análisis será un contraste de hipótesis sobre las muestras en las que antes hemos comprobado la homogeneidad de las varianzas de forma que podamos determinar si la calidad del vino es superior dependiendo de la cantidad de alcohol que este contiene. Aplicamos la siguiente hipótesis:
+
+  H0: m1 - m2 = 0 
+
+  H1: m1 - m2 > 0
+
+
+Donde m1 es la media de alcohol de los vinos buenos y m2 de los malos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+wine_good <- wine[wine$quality_factor == 'Good',]$alcohol
+wine_bad <- wine[wine$quality_factor == 'Bad',]$alcohol
+t.test(wine_good, wine_bad, alternative='greater')
+```
+
+Vemos que nos da un valor de p-value superior a nuestro valor de significación, por lo que rechazamos la hipótesis nula y aceptamos la hipótesis alternativa, concluyendo que los vinos catalogados como buenos tienen un porcentaje mayor de alcohol que los catalogados como malos.
+
+El tercer y último método de análisis consiste en crear un modelo de regresión lineal múltiple, de forma que se pueda predecir la calidad del vino para nuevos juegos de datos en que contemos con los datos pero no con la calificación, crearemos un único modelo con las variables que hemos obtenido como más correlacionadas en el primer método de análisis.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+multiple_regresion <- lm(quality~alcohol+sulphates+density+total.sulfur.dioxide+citric.acid+volatile.acidity, data = wine)
+summary(multiple_regresion)
+```
+
+Vemos que las variables density y citric.acid tienen un p-value mayor a 0.05 por lo que podríamos prescindir de ellas. Vamos a probar a predecir nuestro dataset original a ver que tal funciona nuestro modelo de regresión.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+wine_for_prediction<-wine[c("alcohol",'sulphates','density','total.sulfur.dioxide','citric.acid','volatile.acidity')]
+wine$prediction <- predict(multiple_regresion, wine_for_prediction)
+
+wine$error <- abs(wine$quality - wine$prediction)
+mean(wine$error)
+```
+Vemos que el error medio en las predicciones de todos los datos que teníamos es de 0.507, nuestro modelo es mejorable habiendo utilizado los mismos datos para entrenar y para testear, cosa que generalmente no se utiliza. Aún así, el modelo no es del todo malo, pero si mejorable.
+
+**5. Representación de los resultados a partir de tablas y gráficas<a name="id10"></a>**
+
+Vamos a comprobar las distribuciones del alcohol de los vinos en función de si son catalogados como buenos o malos:
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+par(mfrow=c(1,2))
+hist(wine[wine$quality_factor =='Good',]$alcohol, freq=FALSE)
+hist(wine[wine$quality_factor =='Bad',]$alcohol, freq=FALSE)
+```
+
+Comprobamos efectivamente que los Good tienen más densidad alrededor del 9.5 que los Bad.
+
+Visualizamos la matriz de correlaciones antes visualizada.
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+wine_cor
+```
+
+Mostramos, por último, la matriz de confusión de nuestro modelo de regresión, pasando a factor nuestra predicción:
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+wine$quality_factor_predicted <- wine$quality_factor
+wine <- wine %>% mutate(quality_factor_predicted = ifelse(prediction < 5,'Bad','Good'))
+table(wine$quality_factor,wine$quality_factor_predicted)
+```
+De donde volvemos a ver que tenemos un modelo que no es malo, pero tiene potencial de mejora.
+
+**6.A partir de los resultados obtenidos, ¿cuáles son las conclusiones? ¿Los resultados permiten responder al problema?<a name="id10"></a>**
+
+El preprocesado de datos es igual de importante que el procesado en sí, es decir, la gestión de valores nulos, outliers, valores erróneos, etc etc
+
+
+En cuanto al análisis, los resultados obtenidos nos han permitido ver cuales eran las variables que afectan más en lo que a la calificación del vino se refiere. Concretamente los resultados de los dos primeros análisis nos han permitido determinar cuales eran las que tenían más peso en la calificación, y en el tercer análisis hemos creado un modelo de regresión que nos permite predecir nuevas calificaciones para nuevos datasets. Este último modelo puede ser mejorado, aún así, como hemos visto, ha predecido razonablemente bien.
+
+
+
+
